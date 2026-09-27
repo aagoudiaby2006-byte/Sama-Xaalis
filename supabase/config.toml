@@ -1,0 +1,48 @@
+# Supabase project configuration for local development (`supabase start`).
+# Hosted projects: apply the same settings in the Dashboard (see docs/BACKEND.md).
+# Secrets are NEVER written here: use env(...) references and `supabase secrets set`.
+
+project_id = "sama-xaalis"
+
+[api]
+enabled = true
+schemas = ["public", "storage"]
+
+[auth]
+enabled = true
+site_url = "https://sama-xaalis.invalid"
+enable_signup = true
+
+[auth.rate_limit]
+# SMS sent per hour for the whole project, and OTP verifications per 5 minutes per IP.
+sms_sent = 60
+token_verifications = 30
+
+[auth.sms]
+enable_signup = true
+enable_confirmations = true
+# Minimum delay between two SMS to the same number.
+max_frequency = "60s"
+template = "Sama-Xaalis : votre code est {{ .Code }}. Il expire dans 5 minutes. Ne le communiquez a personne."
+
+# Choose ONE official SMS provider that delivers to Senegal (+221) and enable it.
+[auth.sms.twilio]
+enabled = false
+account_sid = ""
+message_service_sid = ""
+auth_token = "env(SUPABASE_AUTH_SMS_TWILIO_AUTH_TOKEN)"
+
+[auth.sms.vonage]
+enabled = false
+from = ""
+api_key = ""
+api_secret = "env(SUPABASE_AUTH_SMS_VONAGE_API_SECRET)"
+
+[functions.mobile-money]
+verify_jwt = true
+
+[functions.withdraw]
+verify_jwt = true
+
+[functions.delete-account]
+verify_jwt = true
