@@ -69,7 +69,7 @@ function PrivacyCover() {
 function AppShell() {
   const { phase, prefs, completeOnboarding } = useSession();
   const scheme = useColorScheme();
-  const [fontsLoaded] = useFonts(fontAssets);
+  const [fontsLoaded, fontError] = useFonts(fontAssets);
   const [authStart, setAuthStart] = useState<Route>({ name: 'login' });
   const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState);
   // The main stack stays mounted under the lock screen once unlocked, so unlocking returns to the same place.
@@ -82,7 +82,9 @@ function AppShell() {
     return () => sub.remove();
   }, []);
 
-  const ready = fontsLoaded && phase !== 'loading';
+  // If the fonts cannot load (blocked network, restricted web host), show the app with system fonts
+  // rather than staying on the splash screen forever.
+  const ready = (fontsLoaded || !!fontError) && phase !== 'loading';
   useEffect(() => {
     if (ready) void SplashScreen.hideAsync().catch(() => undefined);
   }, [ready]);
