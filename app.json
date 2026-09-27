@@ -7,8 +7,8 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
-    "backgroundColor": "#F1F5F9",
-    "primaryColor": "#2563EB",
+    "backgroundColor": "#F5F0E6",
+    "primaryColor": "#1E6B52",
     "description": "Épargne sans y penser : objectifs d'épargne automatiques avec Wave et Orange Money.",
     "ios": {
       "bundleIdentifier": "sn.samaxaalis.app",
@@ -62,7 +62,7 @@
       "package": "sn.samaxaalis.app",
       "versionCode": 1,
       "adaptiveIcon": {
-        "backgroundColor": "#2563EB",
+        "backgroundColor": "#1E6B52",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -108,7 +108,7 @@
           "image": "./assets/splash-icon.png",
           "imageWidth": 160,
           "resizeMode": "contain",
-          "backgroundColor": "#0F172A"
+          "backgroundColor": "#F5F0E6"
         }
       ],
       "expo-web-browser",

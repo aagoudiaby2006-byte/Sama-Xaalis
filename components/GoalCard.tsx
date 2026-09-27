@@ -3,6 +3,7 @@ import type { Goal, GoalStatus } from '../types';
 import { useTheme } from '../lib/theme';
 import { formatDate, useI18n } from '../lib/i18n';
 import { formatFcfa, progressPercent } from '../lib/money';
+import { categoryIcon } from '../lib/goals';
 import { Icon } from '../zzz/Icon';
 import { AppText, Row } from './ui';
 import { StatusBadge, type BadgeTone } from './StatusBadge';
@@ -50,7 +51,7 @@ export function GoalCard({ goal, hideAmounts, onPress }: { goal: Goal; hideAmoun
     >
       <Row style={{ justifyContent: 'space-between' }}>
         <Row style={{ flex: 1 }}>
-          <Icon name={goal.isChildGoal ? 'happy-outline' : 'flag-outline'} color={theme.colors.primary} size={20} />
+          <Icon name={categoryIcon(goal.category)} color={theme.colors.primary} size={22} />
           <AppText variant="heading" numberOfLines={1} style={{ flex: 1 }}>
             {goal.name}
           </AppText>
@@ -66,7 +67,9 @@ export function GoalCard({ goal, hideAmounts, onPress }: { goal: Goal; hideAmoun
         <AppText variant="caption" muted>
           {goal.status === 'locked' && goal.lockedUntil
             ? t('lockedUntilLabel', { date: formatDate(goal.lockedUntil, lang) })
-            : `${formatFcfa(goal.contributionAmount)} · ${t(`freq_${goal.frequency}`)}`}
+            : goal.endsOn
+              ? t('untilDate', { date: formatDate(`${goal.endsOn}T00:00:00`, lang) })
+              : `${formatFcfa(goal.contributionAmount)} · ${t(`freq_${goal.frequency}`)}`}
         </AppText>
       </Row>
     </Pressable>

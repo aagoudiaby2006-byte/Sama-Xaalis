@@ -17,7 +17,6 @@ jest.mock('../lib/data', () => {
     listGoals: jest.fn(async () => ({ ok: true, data: [] })),
     listActivities: jest.fn(async () => ({ ok: true, data: [] })),
     createGoal: jest.fn(),
-    fetchFeeSchedule: jest.fn(async () => ({ ok: true, data: null })),
     deleteAccount: jest.fn(async () => ({ ok: true, data: null })),
     // Mobile Money: the server reports the integrations as not configured.
     invokeFunction: jest.fn(async () => ({ ok: false, error: 'integration_not_configured' })),
@@ -31,6 +30,7 @@ const mockedData = data as jest.Mocked<typeof data>;
 const goal: Goal = {
   id: 'g1',
   name: 'Tabaski',
+  category: 'fete',
   targetAmount: 150000,
   savedAmount: 12500,
   frequency: 'weekly',
@@ -41,6 +41,7 @@ const goal: Goal = {
   isChildGoal: false,
   childBirthDate: null,
   nextDebitAt: '2026-10-04T08:00:00.000Z',
+  endsOn: '2027-03-31',
   createdAt: '2026-09-27T08:00:00.000Z',
 };
 
@@ -78,39 +79,43 @@ beforeEach(async () => {
 });
 
 describe('onboarding and sign-up', () => {
-  it('shows 3 onboarding screens, then the sign-up form', async () => {
+  it('shows 3 onboarding screens, then the phone step', async () => {
     await render(<App />);
-    expect(await screen.findByText('Épargnez automatiquement')).toBeTruthy();
+    expect(await screen.findByText('Épargnez sans y penser')).toBeTruthy();
     await fireEvent.press(screen.getByTestId('onboarding-next'));
-    expect(screen.getByText('Des prélèvements clairs')).toBeTruthy();
+    expect(screen.getByText('Le prélèvement automatique')).toBeTruthy();
     await fireEvent.press(screen.getByTestId('onboarding-next'));
-    expect(screen.getByText('Sécurité et contrôle')).toBeTruthy();
+    expect(screen.getByText('Votre argent à la fin')).toBeTruthy();
     await fireEvent.press(screen.getByTestId('onboarding-next'));
-    expect(await screen.findByText('Vos informations')).toBeTruthy();
-    expect(screen.getByText('Étape 1 sur 5')).toBeTruthy();
+    expect(await screen.findByText('Votre numéro de téléphone')).toBeTruthy();
+    expect(screen.getByText('Étape 1 sur 6')).toBeTruthy();
+    expect(screen.getByLabelText('Wave')).toBeTruthy();
+    expect(screen.getByLabelText('Orange Money')).toBeTruthy();
   });
 
-  it('validates the sign-up form, including the Senegalese phone number', async () => {
+  it('validates the Senegalese phone number and the terms', async () => {
     await setPrefs({});
     await render(<App />);
     await fireEvent.press(await screen.findByTestId('create-account'));
     await fireEvent.changeText(screen.getByTestId('signup-phone'), '33 821 12 34');
     await fireEvent.press(screen.getByTestId('signup-next'));
     await waitFor(() => expect(screen.getByText(/Saisissez un numéro mobile sénégalais valide/)).toBeTruthy());
-    expect(screen.getByText('Saisissez votre prénom et votre nom.')).toBeTruthy();
     expect(screen.getByText('Vous devez accepter les conditions pour continuer.')).toBeTruthy();
   });
 
-  it('never pretends an SMS was sent when the SMS service is not configured', async () => {
+  it('checks the Wave / Orange Money account (test mode is labelled), then never fakes the SMS', async () => {
+    jest.spyOn(console, 'log').mockImplementation(() => undefined);
     await setPrefs({});
     await render(<App />);
     await fireEvent.press(await screen.findByTestId('create-account'));
-    await fireEvent.changeText(screen.getByTestId('signup-name'), 'Awa Diop');
     await fireEvent.changeText(screen.getByTestId('signup-phone'), '77 123 45 67');
-    await fireEvent.press(screen.getByText('Carte d’identité CEDEAO'));
-    await fireEvent.changeText(screen.getByTestId('signup-id'), 'AB12345');
     await fireEvent.press(screen.getByText('J’accepte les conditions générales et la politique de confidentialité.'));
     await fireEvent.press(screen.getByTestId('signup-next'));
+    expect(await screen.findByText('Votre compte')).toBeTruthy();
+    expect(screen.getByText('Compte actif')).toBeTruthy(); // Wave, from the placeholder
+    expect(screen.getByText('Aucun compte')).toBeTruthy(); // Orange Money
+    expect(screen.getByText(/Mode test : résultat fictif/)).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('account-next'));
     expect(await screen.findByText('Vérification du numéro')).toBeTruthy();
     expect(screen.getByText(/\+221 77 \*\*\* \*\* 67/)).toBeTruthy(); // masked
     await fireEvent.press(screen.getByTestId('otp-send'));
@@ -192,52 +197,69 @@ describe('main screens', () => {
     await screen.findByText('Bonjour Awa');
   }
 
-  it('dashboard: total, masking, Wave and Orange Money shown as integration to configure', async () => {
+  it('dashboard: big total, secure badge, chart, logos, no bottom menu', async () => {
     mockedData.listGoals.mockResolvedValue({ ok: true, data: [goal] });
     await unlocked();
-    expect(await screen.findByText('12 500 FCFA')).toBeTruthy();
+    expect(await screen.findByText('12 500 FCFA')).toBeTruthy();
+    expect(screen.getByText('Transactions sécurisées')).toBeTruthy();
+    expect(screen.getByText('Mon épargne par mois')).toBeTruthy();
     expect(screen.getAllByText('Intégration à configurer').length).toBeGreaterThanOrEqual(2);
-    expect(screen.getAllByText('Wave').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Orange Money').length).toBeGreaterThan(0);
+    expect(screen.getAllByLabelText('Wave').length).toBeGreaterThan(0);
+    expect(screen.getAllByLabelText('Orange Money').length).toBeGreaterThan(0);
     expect(screen.queryByText('Connecté')).toBeNull();
+    expect(screen.queryByRole('tablist')).toBeNull();
+    expect(screen.queryByText('Accueil')).toBeNull();
     expect(screen.getAllByText('Non planifié : autorisation requise').length).toBeGreaterThan(0);
     await fireEvent.press(screen.getByLabelText('Masquer le montant'));
-    expect(screen.queryByText('12 500 FCFA')).toBeNull();
+    expect(screen.queryByText('12 500 FCFA')).toBeNull();
   });
 
-  it('goal creation enforces 500 FCFA and sends integer amounts', async () => {
+  it('goal creation: 6 goals + Autre, 500 FCFA minimum, period picked in the calendar', async () => {
     await unlocked();
     mockedData.createGoal.mockResolvedValue({ ok: true, data: { ...goal, id: 'g2' } });
     await fireEvent.press(screen.getAllByText('Nouvel objectif')[0]);
-    await fireEvent.changeText(await screen.findByTestId('goal-name'), 'Rentrée');
-    await fireEvent.changeText(screen.getByTestId('goal-target'), '100 000');
+    for (const c of ['Urgences', 'Fêtes (Tabaski, Korité…)', 'Scolarité', 'Santé', 'Commerce', 'Logement', 'Autre']) {
+      expect(await screen.findByLabelText(c)).toBeTruthy();
+    }
+    await fireEvent.press(screen.getByTestId('goal-cat-scolarite'));
     await fireEvent.changeText(screen.getByTestId('goal-contribution'), '400');
+    await fireEvent.press(screen.getByText('Wave'));
     await fireEvent.press(screen.getByTestId('goal-submit'));
-    expect(await screen.findByText('Minimum 500 FCFA.')).toBeTruthy();
+    expect(await screen.findByText('Minimum 500 FCFA.')).toBeTruthy();
+    expect(screen.getByText('Choisissez la date de fin dans le calendrier.')).toBeTruthy();
     expect(mockedData.createGoal).not.toHaveBeenCalled();
     await fireEvent.changeText(screen.getByTestId('goal-contribution'), '2 500');
+    await fireEvent.press(screen.getByLabelText('Mois suivant'));
+    await fireEvent.press(screen.getByLabelText('Mois suivant'));
+    const day = screen.getAllByTestId(/^cal-\d{4}-\d{2}-15$/)[0];
+    const endsOn = day.props.testID.slice(4);
+    await fireEvent.press(day);
+    expect(await screen.findByText('Votre épargne automatique')).toBeTruthy();
     await fireEvent.press(screen.getByTestId('goal-submit'));
     await waitFor(() =>
-      expect(mockedData.createGoal).toHaveBeenCalledWith(expect.objectContaining({ name: 'Rentrée', targetAmount: 100000, contributionAmount: 2500 })),
+      expect(mockedData.createGoal).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'Scolarité', category: 'scolarite', contributionAmount: 2500, operator: 'wave', endsOn }),
+      ),
     );
   });
 
-  it('withdrawal shows fees and net amount, and is blocked when fees are not configured', async () => {
-    mockedData.listGoals.mockResolvedValue({ ok: true, data: [goal] });
+  it('withdrawal: only after the period, with a 1 % fee', async () => {
+    mockedData.listGoals.mockResolvedValue({ ok: true, data: [goal, { ...goal, id: 'g3', name: 'Urgences', endsOn: '2026-01-31' }] });
     await unlocked();
     await fireEvent.press(screen.getByText('Retirer'));
-    await fireEvent.press(await screen.findByText('Wave'));
-    await fireEvent.changeText(screen.getByTestId('withdraw-amount'), '10000');
-    expect(await screen.findByText(/Frais non configurés/)).toBeTruthy();
-    mockedData.fetchFeeSchedule.mockResolvedValue({ ok: true, data: { operator: 'orange_money', fixedFee: 0, rateBps: 100, minFee: 50, maxFee: null } });
+    expect(await screen.findByText(/« Tabaski » : retrait possible à partir du 31\/03\/2027/)).toBeTruthy();
+    expect(screen.getByText('Frais de service : 1 % du montant retiré.')).toBeTruthy();
     await fireEvent.press(screen.getByText('Orange Money'));
-    expect(await screen.findByText('9 900 FCFA')).toBeTruthy();
-    expect(screen.getByText('100 FCFA')).toBeTruthy();
+    await fireEvent.changeText(screen.getByTestId('withdraw-amount'), '10000');
+    expect(await screen.findByText('9 900 FCFA')).toBeTruthy();
+    expect(screen.getByText('100 FCFA')).toBeTruthy();
   });
 
   it('account deletion requires typing SUPPRIMER, calls the server and wipes local data', async () => {
     await unlocked();
     await fireEvent.press(screen.getByLabelText('Profil'));
+    expect(await screen.findByText('Se déconnecter')).toBeTruthy();
+    expect(screen.getByLabelText('Retour')).toBeTruthy();
     await fireEvent.press(await screen.findByText('Supprimer mon compte'));
     const confirm = screen.getAllByText('Supprimer mon compte').at(-1)!;
     await fireEvent.press(confirm);
@@ -263,13 +285,14 @@ describe('language and theme', () => {
     await setPrefs({ theme: 'dark' });
     const dark = await render(<App />);
     await screen.findByText('Connexion');
-    expect(JSON.stringify(dark.toJSON())).toContain('#020617');
+    expect(JSON.stringify(dark.toJSON())).toContain('#1A1A1A');
     await dark.unmount();
     await setPrefs({ theme: 'light' });
     const light = await render(<App />);
     await screen.findByText('Connexion');
     const json = JSON.stringify(light.toJSON());
-    expect(json).toContain('#F1F5F9');
-    expect(json).not.toContain('#020617');
+    expect(json).toContain('#F5F0E6');
+    expect(json).toContain('#2C2C2C');
+    expect(json).not.toContain('#1A1A1A');
   });
 });

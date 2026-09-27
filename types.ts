@@ -6,6 +6,9 @@ export type IdType = 'cni_cedeao' | 'passport' | 'residence_permit';
 
 export type Frequency = 'daily' | 'weekly' | 'monthly';
 
+/** The 6 proposed goals, plus « Autre » (free name). */
+export type GoalCategory = 'urgence' | 'fete' | 'scolarite' | 'sante' | 'commerce' | 'logement' | 'autre';
+
 export type GoalStatus = 'active' | 'paused' | 'locked' | 'completed' | 'cancelled';
 
 export interface Profile {
@@ -19,6 +22,7 @@ export interface Profile {
 export interface Goal {
   id: string;
   name: string;
+  category: GoalCategory | null;
   targetAmount: number;
   savedAmount: number; // written by the backend only, never by the app
   frequency: Frequency;
@@ -29,17 +33,20 @@ export interface Goal {
   isChildGoal: boolean;
   childBirthDate: string | null; // ISO date (YYYY-MM-DD)
   nextDebitAt: string | null; // planned date only; no debit happens without an active authorization
+  /** Last day of the saving period (YYYY-MM-DD). Withdrawal opens on this date. */
+  endsOn: string | null;
   createdAt: string;
 }
 
 export interface GoalDraft {
   name: string;
+  category: GoalCategory;
+  /** Amount of each automatic debit × number of debits in the period. */
   targetAmount: number;
   frequency: Frequency;
   contributionAmount: number;
   operator: Operator | null;
-  isChildGoal: boolean;
-  childBirthDate: string | null;
+  endsOn: string; // YYYY-MM-DD
 }
 
 export type ActivityKind = 'debit' | 'withdrawal' | 'fee' | 'refund';

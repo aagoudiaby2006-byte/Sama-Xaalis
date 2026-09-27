@@ -4,6 +4,10 @@ import type { FeeSchedule } from '../types';
 export const MIN_CONTRIBUTION_FCFA = 500;
 export const MAX_AMOUNT_FCFA = 100_000_000;
 
+/** Service fee on withdrawals: 1 % (100 basis points), rounded up to the franc. Same rule on the server. */
+export const WITHDRAWAL_FEE_BPS = 100;
+export const WITHDRAWAL_FEE_SCHEDULE: Omit<FeeSchedule, 'operator'> = { fixedFee: 0, rateBps: WITHDRAWAL_FEE_BPS, minFee: 0, maxFee: null };
+
 export function isValidAmount(amount: number): boolean {
   return Number.isSafeInteger(amount) && amount > 0 && amount <= MAX_AMOUNT_FCFA;
 }
@@ -25,7 +29,7 @@ export function formatFcfa(amount: number): string {
 }
 
 /** Fee for an amount, rounded up to the next franc, clamped to [minFee, maxFee]. */
-export function computeFee(amount: number, schedule: FeeSchedule): number {
+export function computeFee(amount: number, schedule: Omit<FeeSchedule, 'operator'>): number {
   if (!isValidAmount(amount)) throw new RangeError('invalid amount');
   const proportional = Math.floor((amount * schedule.rateBps + 9_999) / 10_000);
   let fee = schedule.fixedFee + proportional;
@@ -42,7 +46,7 @@ export type WithdrawalQuote =
 export function quoteWithdrawal(
   amount: number | null,
   available: number,
-  schedule: FeeSchedule | null,
+  schedule: Omit<FeeSchedule, 'operator'> | null = WITHDRAWAL_FEE_SCHEDULE,
 ): WithdrawalQuote {
   if (amount === null || !isValidAmount(amount)) return { ok: false, reason: 'invalid_amount' };
   if (amount > available) return { ok: false, reason: 'insufficient_funds' };

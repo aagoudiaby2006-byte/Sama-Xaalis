@@ -17,6 +17,26 @@ export function nextDebitDate(frequency: Frequency, from: Date): Date {
   return d;
 }
 
+/** Number of automatic debits from `from` (exclusive) up to the end of `until` (inclusive). */
+export function countDebits(frequency: Frequency, from: Date, until: Date): number {
+  const end = new Date(until.getFullYear(), until.getMonth(), until.getDate(), 23, 59, 59, 999).getTime();
+  let n = 0;
+  let d = nextDebitDate(frequency, from);
+  while (d.getTime() <= end && n < 10_000) {
+    n += 1;
+    d = nextDebitDate(frequency, d);
+  }
+  return n;
+}
+
+export function startOfDay(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+export function addDays(d: Date, days: number): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + days);
+}
+
 /** Parses a strict YYYY-MM-DD date (local time), or null. */
 export function parseIsoDate(text: string): Date | null {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text.trim());

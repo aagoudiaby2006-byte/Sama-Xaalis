@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { View } from 'react-native';
-import type { IdType, Operator } from '../types';
+import type { Goal, Operator } from '../types';
 import { useI18n, type TranslationKey } from '../lib/i18n';
 import { useTheme } from '../lib/theme';
 import { useSession } from '../lib/session';
@@ -9,13 +9,19 @@ import { formatPhoneInput, maskPhone, normalizeSenegalPhone, SENEGAL_DIAL_CODE }
 import { OtpGuard, sendOtp, verifyOtp, type OtpFailureReason } from '../lib/otp';
 import { OTP_LENGTH, isBackendConfigured } from '../lib/config';
 import { checkPin, setPin, validateNewPin } from '../lib/pin';
-import { saveProfile, logAudit } from '../lib/data';
+import { createGoal, logAudit, type DataError } from '../lib/data';
+import { OPERATORS, OPERATOR_BRAND } from '../lib/mobileMoney';
+import { verifierNumero, type VerificationNumero } from '../services/paiement';
 import { authenticateWithBiometrics, isBiometricAvailable, isBiometricEnabled } from '../zzz/biometrics';
 import { openLegalLink } from '../zzz/legalLinks';
-import { AppText, Button, Checkbox, Header, LinkButton, Notice, Screen, Segmented, TextField, ConfirmDialog } from '../components/ui';
+import { AppText, Button, Card, Checkbox, Header, LinkButton, Notice, Row, Screen, Segmented, TextField, ConfirmDialog } from '../components/ui';
 import { Logo } from '../components/Logo';
 import { PinPad } from '../components/PinPad';
-import { MandatePanel, OperatorConnectionPanel } from './MobileMoneyScreen';
+import { StatusBadge } from '../components/StatusBadge';
+import { OperatorLogo, OperatorLogos, SecureBadge } from '../components/Finance';
+import { GoalAmountPeriod, GoalCategoryPicker, useGoalForm } from '../components/GoalForm';
+import { MandatePanel } from './MobileMoneyScreen';
+import { DebitPreview } from './MainScreens';
 
 // ---------------------------------------------------------------------------
 // OTP step (shared by sign-up, new-device login and PIN recovery)
@@ -324,19 +330,16 @@ export function CreatePinScreen() {
 }
 
 // ---------------------------------------------------------------------------
-// Sign-up
+// Sign-up: the 6 steps of Sama-Xaalis
+//   1. phone number  2. Wave / Orange Money account check  3. SMS code
+//   4. goal (6 proposed + « Autre »)  5. amount + period (calendar) -> automatic debits  6. secret code
 // ---------------------------------------------------------------------------
 
-const ID_TYPES: IdType[] = ['cni_cedeao', 'passport', 'residence_permit'];
-const TOTAL_STEPS = 5;
+const TOTAL_STEPS = 6;
 
-export function isValidFullName(name: string): boolean {
-  const trimmed = name.trim();
-  return trimmed.length >= 3 && trimmed.length <= 80 && trimmed.split(/\s+/).length >= 2;
-}
-
-export function isValidIdNumber(id: string): boolean {
-  return /^[A-Za-z0-9]{5,20}$/.test(id.replace(/[\s-]/g, ''));
+/** services/paiement uses "orange", the rest of the app "orange_money". */
+function operatorsFound(v: VerificationNumero): Operator[] {
+  return [...(v.wave ? (['wave'] as const) : []), ...(v.orange ? (['orange_money'] as const) : [])];
 }
 
 export function SignUpScreen() {
@@ -345,60 +348,76 @@ export function SignUpScreen() {
   const { onPhoneVerified, onPinCreated } = useSession();
 
   const [step, setStep] = useState(1);
-  const [fullName, setFullName] = useState('');
   const [phoneInput, setPhoneInput] = useState('');
-  const [idType, setIdType] = useState<IdType | null>(null);
-  const [idNumber, setIdNumber] = useState('');
   const [accepted, setAccepted] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [operator, setOperator] = useState<Operator | null>(null);
   const [linkError, setLinkError] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [verification, setVerification] = useState<VerificationNumero | null>(null);
+  const [operator, setOperator] = useState<Operator | null>(null);
   const [verified, setVerified] = useState(false);
+  const [goalError, setGoalError] = useState<DataError | null>(null);
+  const [createdGoal, setCreatedGoal] = useState<Goal | null>(null);
+  const form = useGoalForm(operator);
 
   const phoneE164 = useMemo(() => normalizeSenegalPhone(phoneInput), [phoneInput]);
-  const identityValid = isValidFullName(fullName) && phoneE164 !== null && idType !== null && isValidIdNumber(idNumber) && accepted;
-
-  const back = () => (step === 1 ? nav.pop() : step === 2 ? setStep(1) : undefined);
 
   const openLink = async (link: 'terms' | 'privacy') => setLinkError(!(await openLegalLink(link)));
 
-  const persistProfile = async () => {
-    if (!phoneE164 || !idType) return;
-    const res = await saveProfile({ fullName, phoneE164, idType, idNumber: idNumber.replace(/[\s-]/g, '').toUpperCase() });
-    if (!res.ok) {
-      setSaveError(t(`err_${res.error}` as TranslationKey));
-      return;
-    }
-    setSaveError(null);
-    logAudit('signup_phone_verified');
-    setStep(3);
+  const checkNumber = async () => {
+    setShowErrors(true);
+    if (!phoneE164 || !accepted) return;
+    setChecking(true);
+    const res = await verifierNumero(phoneE164);
+    setChecking(false);
+    setVerification(res);
+    const found = operatorsFound(res);
+    setOperator(found.length === 1 ? found[0] : null);
+    setShowErrors(false);
+    setStep(2);
   };
 
   const onVerified = async (userId: string) => {
     if (!phoneE164) return;
     await onPhoneVerified({ userId, phoneE164 }, { stayInFlow: true });
     setVerified(true);
-    await persistProfile();
+    logAudit('signup_phone_verified');
+    setStep(4);
   };
 
+  const saveGoal = async () => {
+    setShowErrors(true);
+    const draft = form.submit();
+    if (!draft) return;
+    const res = await createGoal(draft);
+    if (!res.ok) return setGoalError(res.error);
+    setGoalError(null);
+    logAudit('goal_created', { frequency: draft.frequency, category: draft.category });
+    setCreatedGoal(res.data);
+  };
+
+  // Back arrow: free before the SMS code; after it, only between the goal steps.
+  const back =
+    step === 1
+      ? nav.pop
+      : step === 2
+        ? () => setStep(1)
+        : step === 5 && !createdGoal
+          ? () => setStep(4)
+          : undefined;
+
+  const found = verification ? operatorsFound(verification) : [];
+  const noAccount = verification !== null && verification.source !== 'non_configure' && found.length === 0;
+  // Operators the user can pick: the ones found, or both while the check is not configured.
+  const choices = verification?.source === 'non_configure' ? OPERATORS : found;
+
   return (
-    <Screen header={<Header title={t('stepOf', { current: step, total: TOTAL_STEPS })} onBack={step <= 2 ? back : undefined} />}>
+    <Screen header={<Header title={t('stepOf', { current: step, total: TOTAL_STEPS })} onBack={back} />}>
       {step === 1 ? (
         <>
-          <AppText variant="title">{t('identityTitle')}</AppText>
-          <AppText muted>{t('identitySubtitle')}</AppText>
-          <TextField
-            testID="signup-name"
-            label={t('fullName')}
-            placeholder={t('fullNamePlaceholder')}
-            value={fullName}
-            onChangeText={setFullName}
-            autoCapitalize="words"
-            textContentType="name"
-            autoComplete="name"
-            error={showErrors && !isValidFullName(fullName) ? t('fullNameInvalid') : null}
-          />
+          <Logo size={56} showSlogan />
+          <AppText variant="title">{t('signupPhoneTitle')}</AppText>
+          <AppText muted>{t('signupPhoneSubtitle')}</AppText>
           <TextField
             testID="signup-phone"
             label={t('phoneLabel')}
@@ -406,25 +425,12 @@ export function SignUpScreen() {
             placeholder={t('phonePlaceholder')}
             keyboardType="phone-pad"
             textContentType="telephoneNumber"
+            autoComplete="tel"
             value={formatPhoneInput(phoneInput)}
             onChangeText={setPhoneInput}
             error={showErrors && !phoneE164 ? t('phoneInvalid') : null}
           />
-          <Segmented
-            label={t('idType')}
-            options={ID_TYPES.map((v) => ({ value: v, label: t(`idType_${v}`) }))}
-            value={idType}
-            onChange={setIdType}
-          />
-          <TextField
-            testID="signup-id"
-            label={t('idNumber')}
-            value={idNumber}
-            onChangeText={setIdNumber}
-            autoCapitalize="characters"
-            autoCorrect={false}
-            error={showErrors && !isValidIdNumber(idNumber) ? t('idNumberInvalid') : null}
-          />
+          <OperatorLogos />
           <Checkbox label={t('acceptTerms')} value={accepted} onChange={setAccepted} />
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', columnGap: 16 }}>
             <LinkButton title={t('readTerms')} onPress={() => void openLink('terms')} />
@@ -432,40 +438,93 @@ export function SignUpScreen() {
           </View>
           {linkError ? <Notice kind="warning">{t('linkNotConfigured')}</Notice> : null}
           {showErrors && !accepted ? <Notice kind="error">{t('mustAcceptTerms')}</Notice> : null}
+          <Button testID="signup-next" title={checking ? t('checkingNumber') : t('continue')} onPress={checkNumber} disabled={checking} />
+        </>
+      ) : null}
+
+      {step === 2 && verification && phoneE164 ? (
+        <>
+          <AppText variant="title">{t('accountCheckTitle')}</AppText>
+          <AppText muted>{t('accountCheckSubtitle', { phone: maskPhone(phoneE164) })}</AppText>
+          <Card>
+            {OPERATORS.map((op) => {
+              const has = found.includes(op);
+              return (
+                <Row key={op} style={{ justifyContent: 'space-between' }}>
+                  <Row style={{ flex: 1 }}>
+                    <OperatorLogo operator={op} size={36} />
+                    <AppText weight="medium">{OPERATOR_BRAND[op].name}</AppText>
+                  </Row>
+                  <StatusBadge
+                    label={verification.source === 'non_configure' ? t('mmState_integration_missing') : has ? t('accountFound') : t('accountNotFound')}
+                    tone={verification.source === 'non_configure' ? 'warning' : has ? 'success' : 'neutral'}
+                  />
+                </Row>
+              );
+            })}
+          </Card>
+          {verification.source === 'placeholder' ? <Notice kind="warning">{t('verifyPlaceholder')}</Notice> : null}
+          {verification.source === 'non_configure' ? <Notice kind="warning">{t('verifyNotConfigured')}</Notice> : null}
+          {noAccount ? <Notice kind="error">{t('noWalletAccount')}</Notice> : null}
+          {choices.length > 1 ? (
+            <Segmented<Operator>
+              label={t('chooseWallet')}
+              options={choices.map((o) => ({ value: o, label: OPERATOR_BRAND[o].name }))}
+              value={operator}
+              onChange={setOperator}
+            />
+          ) : null}
+          {noAccount ? (
+            <Button kind="secondary" title={t('changeNumber')} onPress={() => setStep(1)} />
+          ) : (
+            <Button testID="account-next" title={t('continue')} onPress={() => setStep(3)} disabled={!operator} />
+          )}
+        </>
+      ) : null}
+
+      {step === 3 && phoneE164 && !verified ? <OtpStep phoneE164={phoneE164} createUser onVerified={onVerified} /> : null}
+
+      {step === 4 ? (
+        <>
+          <AppText variant="title">{t('goalChooseTitle')}</AppText>
+          <AppText muted>{t('goalChooseSubtitle')}</AppText>
+          <GoalCategoryPicker form={form} showErrors={showErrors} />
           <Button
-            testID="signup-next"
+            testID="goal-cat-next"
             title={t('continue')}
             onPress={() => {
               setShowErrors(true);
-              if (identityValid) setStep(2);
+              if (form.categoryDone) {
+                setShowErrors(false);
+                setStep(5);
+              }
             }}
           />
         </>
       ) : null}
 
-      {step === 2 && phoneE164 && !verified ? <OtpStep phoneE164={phoneE164} createUser onVerified={onVerified} /> : null}
-      {step === 2 && verified && saveError ? (
+      {step === 5 && !createdGoal ? (
         <>
-          <Notice kind="error">{saveError}</Notice>
-          <Button title={t('retry')} onPress={persistProfile} />
+          <AppText variant="title">{t('amountPeriodTitle')}</AppText>
+          <AppText muted>{t('autoDebitPrinciple')}</AppText>
+          <GoalAmountPeriod form={form} />
+          {goalError ? <Notice kind="error">{t(`err_${goalError}` as TranslationKey)}</Notice> : null}
+          <Button testID="goal-submit" title={t('startSaving')} icon="checkmark" onPress={saveGoal} />
         </>
       ) : null}
 
-      {step === 3 && phoneE164 ? (
+      {step === 5 && createdGoal ? (
         <>
-          <OperatorConnectionPanel phoneE164={phoneE164} selected={operator} onSelect={setOperator} />
-          <Button title={t('continue')} onPress={() => setStep(4)} />
-        </>
-      ) : null}
-
-      {step === 4 ? (
-        <>
+          <AppText variant="title">{t('autoDebitReadyTitle')}</AppText>
+          <AppText muted>{t('autoDebitReadyBody')}</AppText>
+          <SecureBadge />
+          <DebitPreview goal={createdGoal} states={null} />
           <MandatePanel operator={operator} />
-          <Button title={t('continue')} onPress={() => setStep(5)} />
+          <Button testID="goal-done" title={t('continue')} onPress={() => setStep(6)} />
         </>
       ) : null}
 
-      {step === 5 ? <PinSetupStep onDone={onPinCreated} /> : null}
+      {step === 6 ? <PinSetupStep onDone={onPinCreated} /> : null}
     </Screen>
   );
 }

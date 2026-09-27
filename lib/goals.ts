@@ -1,61 +1,101 @@
-import type { Frequency, Goal, GoalDraft, Operator } from '../types';
-import { MIN_CONTRIBUTION_FCFA, isValidAmount, parseAmountInput } from './money';
-import { isValidChildBirthDate, parseIsoDate } from './schedule';
+import type { Frequency, Goal, GoalCategory, GoalDraft, Operator } from '../types';
+import type { IconName } from '../zzz/Icon';
+import { MAX_AMOUNT_FCFA, MIN_CONTRIBUTION_FCFA, isValidAmount, parseAmountInput } from './money';
+import { addDays, countDebits, parseIsoDate, startOfDay, toIsoDate } from './schedule';
 
-export interface GoalFormInput {
-  name: string;
-  target: string;
-  frequency: Frequency;
-  contribution: string;
-  operator: Operator | null;
-  isChildGoal: boolean;
-  childBirthDate: string;
+/** The 6 proposed goals, then « Autre ». The visible label comes from i18n (`goalCat_<id>`). */
+export const GOAL_CATEGORIES: { id: GoalCategory; icon: IconName }[] = [
+  { id: 'urgence', icon: 'medkit-outline' },
+  { id: 'fete', icon: 'gift-outline' },
+  { id: 'scolarite', icon: 'school-outline' },
+  { id: 'sante', icon: 'heart-outline' },
+  { id: 'commerce', icon: 'storefront-outline' },
+  { id: 'logement', icon: 'home-outline' },
+  { id: 'autre', icon: 'create-outline' },
+];
+
+export function categoryIcon(category: GoalCategory | null): IconName {
+  return GOAL_CATEGORIES.find((c) => c.id === category)?.icon ?? 'flag-outline';
 }
 
-export type GoalFormErrors = Partial<Record<'name' | 'target' | 'contribution' | 'childBirthDate', 'invalid' | 'min' | 'above_target'>>;
+/** Shortest and longest saving periods offered by the calendar. */
+export const MIN_PERIOD_DAYS = 7;
+export const MAX_PERIOD_DAYS = 5 * 366;
 
-export function validateGoalForm(input: GoalFormInput, now = new Date()): { draft: GoalDraft | null; errors: GoalFormErrors } {
+export function periodBounds(now = new Date()): { min: Date; max: Date } {
+  const today = startOfDay(now);
+  return { min: addDays(today, MIN_PERIOD_DAYS), max: addDays(today, MAX_PERIOD_DAYS) };
+}
+
+export interface GoalFormInput {
+  category: GoalCategory;
+  /** Goal name: the localized preset label, or what the user typed for « Autre ». */
+  name: string;
+  contribution: string;
+  frequency: Frequency;
+  endsOn: string; // YYYY-MM-DD, picked in the calendar
+  operator: Operator | null;
+}
+
+export type GoalFormErrors = Partial<Record<'name' | 'contribution' | 'endsOn', 'invalid' | 'min' | 'too_short' | 'too_large'>>;
+
+export interface GoalPlan {
+  debits: number;
+  total: number;
+}
+
+/** How many debits fall in the period and the resulting total. */
+export function planGoal(contribution: number, frequency: Frequency, endsOn: Date, now = new Date()): GoalPlan {
+  const debits = countDebits(frequency, now, endsOn);
+  return { debits, total: debits * contribution };
+}
+
+export function validateGoalForm(input: GoalFormInput, now = new Date()): { draft: GoalDraft | null; errors: GoalFormErrors; plan: GoalPlan | null } {
   const errors: GoalFormErrors = {};
   const name = input.name.trim();
   if (name.length < 2 || name.length > 40) errors.name = 'invalid';
-  const target = parseAmountInput(input.target);
-  if (target === null) errors.target = 'invalid';
   const contribution = parseAmountInput(input.contribution);
   if (contribution === null) errors.contribution = 'invalid';
   else if (contribution < MIN_CONTRIBUTION_FCFA) errors.contribution = 'min';
-  else if (target !== null && contribution > target) errors.contribution = 'above_target';
-  let birth: Date | null = null;
-  if (input.isChildGoal) {
-    birth = parseIsoDate(input.childBirthDate);
-    if (!birth || !isValidChildBirthDate(birth, now)) errors.childBirthDate = 'invalid';
+  const end = parseIsoDate(input.endsOn);
+  const { min, max } = periodBounds(now);
+  if (!end || end.getTime() < min.getTime() || end.getTime() > max.getTime()) errors.endsOn = 'invalid';
+  let plan: GoalPlan | null = null;
+  if (end && !errors.endsOn && contribution !== null && !errors.contribution) {
+    plan = planGoal(contribution, input.frequency, end, now);
+    if (plan.debits === 0) errors.endsOn = 'too_short';
+    else if (plan.total > MAX_AMOUNT_FCFA) errors.contribution = 'too_large';
   }
-  if (Object.keys(errors).length > 0 || target === null || contribution === null) return { draft: null, errors };
+  if (Object.keys(errors).length > 0 || !plan || contribution === null || !end) return { draft: null, errors, plan };
   return {
     errors,
+    plan,
     draft: {
       name,
-      targetAmount: target,
+      category: input.category,
+      targetAmount: plan.total,
       frequency: input.frequency,
       contributionAmount: contribution,
       operator: input.operator,
-      isChildGoal: input.isChildGoal,
-      childBirthDate: input.isChildGoal ? input.childBirthDate.trim() : null,
+      endsOn: toIsoDate(end),
     },
   };
 }
 
-/** Allowed status transitions from the app (the database enforces the same rules). */
-export function allowedActions(goal: Goal, now = new Date()): ('pause' | 'resume' | 'lock' | 'unlock' | 'cancel')[] {
-  const out: ('pause' | 'resume' | 'lock' | 'unlock' | 'cancel')[] = [];
-  if (goal.status === 'active') out.push('pause', 'lock', 'cancel');
-  if (goal.status === 'paused') out.push('resume', 'lock', 'cancel');
-  if (goal.status === 'locked') {
-    const childLocked = goal.isChildGoal && goal.lockedUntil !== null && Date.parse(goal.lockedUntil) > now.getTime();
-    if (!childLocked) out.push('unlock');
-  }
-  return out;
+/** Allowed status changes from the app (the database enforces the same rules). */
+export function allowedActions(goal: Goal): ('pause' | 'resume' | 'cancel')[] {
+  if (goal.status === 'active') return ['pause', 'cancel'];
+  if (goal.status === 'paused') return ['resume', 'cancel'];
+  return [];
 }
 
-export function canWithdrawFrom(goal: Goal): boolean {
-  return goal.status !== 'locked' && isValidAmount(goal.savedAmount);
+/** True once the saving period is over (withdrawals open on the last day of the period). */
+export function periodEnded(goal: Goal, now = new Date()): boolean {
+  if (!goal.endsOn) return true;
+  const end = parseIsoDate(goal.endsOn);
+  return !!end && end.getTime() <= startOfDay(now).getTime();
+}
+
+export function canWithdrawFrom(goal: Goal, now = new Date()): boolean {
+  return goal.status !== 'locked' && isValidAmount(goal.savedAmount) && periodEnded(goal, now);
 }

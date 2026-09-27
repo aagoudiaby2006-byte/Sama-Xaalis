@@ -42,6 +42,7 @@ describe('translations', () => {
       quote_: ['invalid_amount', 'insufficient_funds', 'fee_exceeds_amount', 'fees_not_configured'],
       idType_: ['cni_cedeao', 'passport', 'residence_permit'],
       theme_: ['system', 'light', 'dark'],
+      goalCat_: ['urgence', 'fete', 'scolarite', 'sante', 'commerce', 'logement', 'autre'],
     };
     for (const [prefix, values] of Object.entries(families)) {
       for (const v of values) expect(frKeys).toContain(`${prefix}${v}`);

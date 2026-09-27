@@ -3,10 +3,11 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { BackHandler } from 'react-native';
 
-export type Tab = 'home' | 'goals' | 'activity' | 'profile';
-
+// No bottom tab bar: everything starts from Home, and every other screen has a back arrow (top left).
 export type Route =
-  | { name: 'tabs'; tab: Tab }
+  | { name: 'home' }
+  | { name: 'activity' }
+  | { name: 'profile' }
   | { name: 'goalNew' }
   | { name: 'goalDetail'; goalId: string }
   | { name: 'mobileMoney' }

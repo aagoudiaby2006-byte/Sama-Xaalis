@@ -39,10 +39,16 @@ do $$ begin
 end $$;
 
 -- ---------- goals ----------
-insert into public.goals (name, target_amount, frequency, contribution_amount, status) values ('Tabaski', 150000, 'weekly', 5000, 'active');
-select pg_temp.expect_error($q$insert into public.goals (name, target_amount, frequency, contribution_amount) values ('Trop petit', 10000, 'daily', 499)$q$, 'contribution below 500 FCFA');
-select pg_temp.expect_error($q$insert into public.goals (name, target_amount, frequency, contribution_amount) values ('Sup', 1000, 'daily', 2000)$q$, 'contribution above target');
-select pg_temp.expect_error($q$insert into public.goals (name, target_amount, frequency, contribution_amount, saved_amount) values ('Triche', 1000, 'daily', 500, 999)$q$, 'client cannot set saved_amount on insert');
+insert into public.goals (name, category, target_amount, frequency, contribution_amount, status, ends_on) values ('Tabaski', 'fete', 150000, 'weekly', 5000, 'active', current_date + 210);
+select pg_temp.expect_error($q$insert into public.goals (name, target_amount, frequency, contribution_amount) values ('Sans période', 10000, 'daily', 500)$q$, 'goal without period');
+select pg_temp.expect_error($q$insert into public.goals (name, target_amount, frequency, contribution_amount, ends_on) values ('Trop court', 10000, 'daily', 500, current_date + 3)$q$, 'period shorter than 7 days');
+select pg_temp.expect_error($q$insert into public.goals (name, category, target_amount, frequency, contribution_amount, ends_on) values ('Cat', 'tontine', 10000, 'daily', 500, current_date + 30)$q$, 'unknown category');
+select pg_temp.expect_error($q$update public.goals set ends_on = current_date + 10 where name = 'Tabaski'$q$, 'period shortened');
+update public.goals set ends_on = current_date + 240 where name = 'Tabaski';
+do $$ begin raise notice 'ok: saving period'; end $$;
+select pg_temp.expect_error($q$insert into public.goals (name, target_amount, frequency, contribution_amount, ends_on) values ('Trop petit', 10000, 'daily', 499, current_date + 30)$q$, 'contribution below 500 FCFA');
+select pg_temp.expect_error($q$insert into public.goals (name, target_amount, frequency, contribution_amount, ends_on) values ('Sup', 1000, 'daily', 2000, current_date + 30)$q$, 'contribution above target');
+select pg_temp.expect_error($q$insert into public.goals (name, target_amount, frequency, contribution_amount, saved_amount, ends_on) values ('Triche', 1000, 'daily', 500, 999, current_date + 30)$q$, 'client cannot set saved_amount on insert');
 select pg_temp.expect_error($q$update public.goals set saved_amount = 1000000$q$, 'client cannot update saved_amount');
 select pg_temp.expect_error($q$update public.goals set status = 'completed'$q$, 'client cannot mark completed');
 
@@ -52,6 +58,9 @@ select pg_temp.expect_error($q$update public.goals set status = 'locked', locked
 update public.goals set status = 'locked', locked_until = current_date + 30 where name = 'Tabaski';
 update public.goals set status = 'active', locked_until = null where name = 'Tabaski';
 do $$ begin raise notice 'ok: pause / resume / lock / unlock'; end $$;
+do $$ begin
+  if (select count(*) from public.fee_schedules where kind = 'withdrawal' and rate_bps = 100 and active) <> 2 then raise exception '1 %% withdrawal fee missing'; end if;
+end $$;
 
 -- child goal: forced locked until 18th birthday, cannot be unlocked early
 insert into public.goals (name, target_amount, frequency, contribution_amount, status, is_child_goal, child_birth_date)

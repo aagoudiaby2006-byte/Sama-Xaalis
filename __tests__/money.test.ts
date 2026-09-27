@@ -1,7 +1,7 @@
 import { computeFee, formatFcfa, isValidAmount, MIN_CONTRIBUTION_FCFA, parseAmountInput, progressPercent, quoteWithdrawal } from '../lib/money';
 import type { FeeSchedule } from '../types';
 
-// Test-only schedule: real fees must come from the operator contracts (fee_schedules table).
+// Generic schedule to test the fee engine (the app's own withdrawal fee is WITHDRAWAL_FEE_SCHEDULE: 1 %).
 const schedule: FeeSchedule = { operator: 'wave', fixedFee: 0, rateBps: 100, minFee: 50, maxFee: 5000 };
 
 describe('money (integer FCFA)', () => {

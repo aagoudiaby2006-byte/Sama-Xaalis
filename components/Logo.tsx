@@ -8,11 +8,11 @@ import { AppText } from './ui';
 export function LogoMark({ size = 64 }: { size?: number }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 100 100">
-      <Rect x={0} y={0} width={100} height={100} rx={26} fill={palette.cobalt} />
-      <Rect x={22} y={56} width={15} height={22} rx={4} fill={palette.white} />
-      <Rect x={42.5} y={44} width={15} height={34} rx={4} fill={palette.white} />
-      <Rect x={63} y={32} width={15} height={46} rx={4} fill={palette.white} />
-      <Circle cx={70.5} cy={20} r={9} fill={palette.emerald} />
+      <Rect x={0} y={0} width={100} height={100} rx={26} fill={palette.green} />
+      <Rect x={22} y={56} width={15} height={22} rx={4} fill={palette.cream} />
+      <Rect x={42.5} y={44} width={15} height={34} rx={4} fill={palette.cream} />
+      <Rect x={63} y={32} width={15} height={46} rx={4} fill={palette.cream} />
+      <Circle cx={70.5} cy={20} r={9} fill={palette.gold} />
     </Svg>
   );
 }

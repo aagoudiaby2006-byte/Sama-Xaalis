@@ -12,7 +12,7 @@ import { NavigationProvider, useNav, type Route } from './lib/navigation';
 import { OnboardingScreen } from './screens/OnboardingScreen';
 import { CreatePinScreen, LoginScreen, OtpLoginScreen, SignUpScreen } from './screens/AuthScreens';
 import { ChangePinScreen, RecoveryScreen } from './screens/RecoveryScreen';
-import { MainTabs } from './screens/MainScreens';
+import { ActivityScreen, HomeScreen, ProfileScreen } from './screens/MainScreens';
 import { GoalDetailScreen, GoalNewScreen } from './screens/GoalDetailScreen';
 import { MobileMoneyScreen } from './screens/MobileMoneyScreen';
 import { WithdrawScreen } from './screens/WithdrawScreen';
@@ -47,10 +47,12 @@ function MainRouter() {
       return <WithdrawScreen goalId={route.goalId} />;
     case 'changePin':
       return <ChangePinScreen />;
-    case 'tabs':
-      return <MainTabs tab={route.tab} />;
+    case 'activity':
+      return <ActivityScreen />;
+    case 'profile':
+      return <ProfileScreen />;
     default:
-      return <MainTabs tab="home" />;
+      return <HomeScreen />;
   }
 }
 
@@ -112,7 +114,7 @@ function AppShell() {
       content = (
         <>
           {mainMounted.current ? (
-            <NavigationProvider key="main" initial={{ name: 'tabs', tab: 'home' }}>
+            <NavigationProvider key="main" initial={{ name: 'home' }}>
               <MainRouter />
             </NavigationProvider>
           ) : null}

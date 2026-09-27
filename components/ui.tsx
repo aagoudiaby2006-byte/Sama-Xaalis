@@ -25,7 +25,7 @@ import { Icon, type IconName } from '../zzz/Icon';
 
 type Variant = 'display' | 'title' | 'heading' | 'body' | 'label' | 'caption';
 const VARIANTS: Record<Variant, { size: number; line: number; weight: FontWeightName }> = {
-  display: { size: 32, line: 38, weight: 'bold' },
+  display: { size: 40, line: 48, weight: 'bold' },
   title: { size: 24, line: 30, weight: 'bold' },
   heading: { size: 17, line: 22, weight: 'semibold' },
   body: { size: 15, line: 21, weight: 'regular' },
@@ -137,7 +137,7 @@ export function Header({ title, onBack, right }: { title: string; onBack?: () =>
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, minHeight: 52, gap: 4 }}>
       {onBack ? (
-        <IconButton icon="chevron-back" label={t('back')} onPress={onBack} />
+        <IconButton icon="arrow-back" label={t('back')} onPress={onBack} />
       ) : (
         <View style={{ width: 8 }} />
       )}

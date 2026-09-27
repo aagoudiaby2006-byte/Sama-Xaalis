@@ -25,14 +25,15 @@ Run lint and typecheck before declaring any task done.
 
 ## Navigation & Routing
 
-- This project does NOT use Expo Router. Navigation is a small typed stack in `lib/navigation.tsx`; routes are rendered by `App.tsx` according to the session phase (`lib/session.tsx`). Keep this structure (App.tsx, screens/, components/, lib/, zzz/).
+- This project does NOT use Expo Router. Navigation is a small typed stack in `lib/navigation.tsx`; routes are rendered by `App.tsx` according to the session phase (`lib/session.tsx`). Keep this structure (App.tsx, screens/, components/, lib/, services/, zzz/). No bottom tab bar: Home is the root, other screens use the back arrow.
 
 ## Project rules (Sama-Xaalis)
 
 - No fixed OTP / PIN codes, no `expo-sms`, no simulated SMS, wallet connection, mandate or transaction. Missing integrations must show "Intégration à configurer".
 - Secrets never in the app or the repo: only `EXPO_PUBLIC_*` public values; everything else in Supabase secrets / EAS.
 - PIN and session only in `zzz/secureStore.ts`; AsyncStorage only for UI prefs (`lib/prefs.ts`).
-- Money is integer FCFA (`lib/money.ts`). Every visible string goes through `lib/i18n.ts` (fr + en).
+- Money is integer FCFA (`lib/money.ts`); min debit 500 FCFA, withdrawal fee 1 % (`WITHDRAWAL_FEE_BPS`).
+- `services/paiement.ts` placeholders may return test values only under `__DEV__`, always labelled "Mode test"; in production they return `non_configure`. Every visible string goes through `lib/i18n.ts` (fr + en).
 - Fonts: choose weight via `AppText weight`, never `fontWeight`. Icons: `zzz/Icon.tsx`, never emoji.
 - Run `npm run verify` (and `npm run test:db` for SQL changes) before committing.
 

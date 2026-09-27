@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
 import type { Activity, Goal, Language, OperatorState, Profile, ThemePreference } from '../types';
 import { formatDate, useI18n, type TranslationKey } from '../lib/i18n';
 import { useTheme } from '../lib/theme';
-import { useNav, type Tab } from '../lib/navigation';
+import { useNav } from '../lib/navigation';
 import { useSession } from '../lib/session';
 import { isBackendConfigured } from '../lib/config';
 import { deleteAccount, fetchProfile, listActivities, listGoals, type DataError } from '../lib/data';
@@ -14,13 +13,13 @@ import { maskPhone } from '../lib/phone';
 import { OPERATOR_BRAND, canDebit, displayState } from '../lib/mobileMoney';
 import { isBiometricAvailable, isBiometricEnabled, setBiometricEnabled } from '../zzz/biometrics';
 import { openLegalLink, type LegalLink } from '../zzz/legalLinks';
-import { Icon, type IconName } from '../zzz/Icon';
 import {
   AppText,
   Button,
   Card,
   ConfirmDialog,
   EmptyState,
+  Header,
   IconButton,
   KeyValue,
   ListItem,
@@ -34,6 +33,8 @@ import {
 import { GoalCard } from '../components/GoalCard';
 import { ActivityRow } from '../components/ActivityRow';
 import { StatusBadge } from '../components/StatusBadge';
+import { LogoMark } from '../components/Logo';
+import { OperatorLogo, SavingsChart, SecureBadge } from '../components/Finance';
 import { useOperatorStates } from './MobileMoneyScreen';
 
 type Loaded<T> = { status: 'loading' } | { status: 'ok'; data: T } | { status: 'error'; error: DataError };
@@ -98,6 +99,7 @@ export function DebitPreview({ goal, states }: { goal: Goal; states: OperatorSta
         value={authorized && goal.nextDebitAt && goal.status === 'active' ? formatDate(goal.nextDebitAt, lang) : t('debitNotScheduled')}
       />
       <KeyValue label={t('debitFrequency')} value={t(`freq_${goal.frequency}`)} />
+      {goal.endsOn ? <KeyValue label={t('periodEnd')} value={formatDate(goal.endsOn, lang)} /> : null}
       <KeyValue label={t('debitOperator')} value={goal.operator ? OPERATOR_BRAND[goal.operator].name : t('goalOperatorNone')} />
       <KeyValue label={t('debitFees')} value={t('debitFeesUnknown')} />
       <KeyValue
@@ -112,21 +114,21 @@ export function DebitPreview({ goal, states }: { goal: Goal; states: OperatorSta
 }
 
 // ---------------------------------------------------------------------------
-// Home
+// Home: the only entry point (no bottom menu). Profile is reached from the top-right button.
 // ---------------------------------------------------------------------------
 
-function HomeScreen({ goTab }: { goTab: (tab: Tab) => void }) {
+export function HomeScreen() {
   const { t } = useI18n();
   const theme = useTheme();
   const nav = useNav();
   const { prefs, updatePrefs } = useSession();
   const profile = useLoad<Profile | null>(fetchProfile);
   const goals = useLoad<Goal[]>(listGoals);
-  const activity = useLoad<Activity[]>(() => listActivities(undefined, 5));
+  const activity = useLoad<Activity[]>(() => listActivities(undefined, 200));
   const { states } = useOperatorStates();
 
   const goalList = goals.state.status === 'ok' ? goals.state.data : [];
-  const live = goalList.filter((g) => g.status !== 'cancelled');
+  const live = goalList.filter((g) => g.status !== 'cancelled' || g.savedAmount > 0);
   const total = live.reduce((sum, g) => sum + g.savedAmount, 0);
   const active = goalList.filter((g) => g.status === 'active');
   const next = active
@@ -140,13 +142,18 @@ function HomeScreen({ goTab }: { goTab: (tab: Tab) => void }) {
   return (
     <Screen>
       <Row style={{ justifyContent: 'space-between' }}>
-        <AppText variant="title">{name ? t('hello', { name }) : t('helloAnonymous')}</AppText>
-        <IconButton icon="wallet-outline" label={t('mmTitle')} onPress={() => nav.push({ name: 'mobileMoney' })} />
+        <Row style={{ flex: 1 }}>
+          <LogoMark size={36} />
+          <AppText variant="title" style={{ flex: 1 }} numberOfLines={1}>
+            {name ? t('hello', { name }) : t('helloAnonymous')}
+          </AppText>
+        </Row>
+        <IconButton icon="person-circle-outline" label={t('profileTitle')} onPress={() => nav.push({ name: 'profile' })} />
       </Row>
 
       {!isBackendConfigured() ? <Notice kind="warning">{t('backendMissingBanner')}</Notice> : null}
 
-      <View style={{ backgroundColor: theme.colors.hero, borderRadius: theme.radius.lg, padding: 20, gap: 8 }}>
+      <View style={{ backgroundColor: theme.colors.hero, borderRadius: theme.radius.lg, padding: 22, gap: 10 }}>
         <Row style={{ justifyContent: 'space-between' }}>
           <AppText color={theme.colors.onHero} weight="medium">
             {t('totalSaved')}
@@ -158,12 +165,10 @@ function HomeScreen({ goTab }: { goTab: (tab: Tab) => void }) {
             onPress={() => updatePrefs({ hideAmounts: !prefs.hideAmounts })}
           />
         </Row>
-        <AppText variant="display" color={theme.colors.onHero}>
+        <AppText variant="display" color={theme.colors.onHero} numberOfLines={1}>
           {goals.state.status === 'ok' ? (prefs.hideAmounts ? '••••••' : formatFcfa(total)) : '—'}
         </AppText>
-        <AppText variant="caption" color={theme.colors.onHero}>
-          {`${t('activeGoals')} : ${active.length}`}
-        </AppText>
+        <SecureBadge onDark />
         <Row style={{ marginTop: 8 }}>
           <View style={{ flex: 1 }}>
             <Button title={t('newGoal')} icon="add" onPress={() => nav.push({ name: 'goalNew' })} />
@@ -182,7 +187,10 @@ function HomeScreen({ goTab }: { goTab: (tab: Tab) => void }) {
         {states ? (
           states.map((s) => (
             <Row key={s.operator} style={{ justifyContent: 'space-between' }}>
-              <AppText weight="medium">{OPERATOR_BRAND[s.operator].name}</AppText>
+              <Row style={{ flex: 1 }}>
+                <OperatorLogo operator={s.operator} size={32} />
+                <AppText weight="medium">{OPERATOR_BRAND[s.operator].name}</AppText>
+              </Row>
               <StatusBadge label={t(`mmState_${displayState(s)}`)} tone={s.connection === 'connected' ? 'success' : 'warning'} />
             </Row>
           ))
@@ -195,55 +203,30 @@ function HomeScreen({ goTab }: { goTab: (tab: Tab) => void }) {
       {next ? <DebitPreview goal={next} states={states} /> : <AppText muted>{t('noNextDebit')}</AppText>}
       {next && !anyDebit ? <Notice kind="info">{t('nextDebitNeedsMandate')}</Notice> : null}
 
-      <SectionTitle title={t('activeGoals')} action={{ label: t('seeAll'), onPress: () => goTab('goals') }} />
+      <SectionTitle title={t('chartTitle')} />
+      <Card>
+        {activity.state.status === 'ok' ? <SavingsChart activities={activity.state.data} hideAmounts={prefs.hideAmounts} /> : null}
+        {activity.state.status === 'loading' ? <Loading /> : null}
+        {activity.state.status === 'error' ? <ErrorNotice error={activity.state.error} /> : null}
+      </Card>
+
+      <SectionTitle title={t('goalsTitle')} />
       {goals.state.status === 'loading' ? <Loading /> : null}
       {goals.state.status === 'error' ? <ErrorNotice error={goals.state.error} onRetry={goals.reload} /> : null}
-      {goals.state.status === 'ok' && active.length === 0 ? <EmptyState icon="flag-outline" title={t('goalsEmptyTitle')} body={t('goalsEmptyBody')} /> : null}
-      {active.slice(0, 3).map((g) => (
+      {goals.state.status === 'ok' && live.length === 0 ? <EmptyState icon="flag-outline" title={t('goalsEmptyTitle')} body={t('goalsEmptyBody')} /> : null}
+      {live.map((g) => (
         <GoalCard key={g.id} goal={g} hideAmounts={prefs.hideAmounts} onPress={() => nav.push({ name: 'goalDetail', goalId: g.id })} />
       ))}
 
-      <SectionTitle title={t('recentActivity')} action={{ label: t('seeAll'), onPress: () => goTab('activity') }} />
+      <SectionTitle title={t('recentActivity')} action={{ label: t('seeAll'), onPress: () => nav.push({ name: 'activity' }) }} />
       <Card>
         {activity.state.status === 'loading' ? <Loading /> : null}
         {activity.state.status === 'error' ? <ErrorNotice error={activity.state.error} /> : null}
         {activity.state.status === 'ok' && activity.state.data.length === 0 ? <AppText muted>{t('activityEmpty')}</AppText> : null}
         {activity.state.status === 'ok'
-          ? activity.state.data.map((a) => <ActivityRow key={a.id} activity={a} hideAmounts={prefs.hideAmounts} />)
+          ? activity.state.data.slice(0, 5).map((a) => <ActivityRow key={a.id} activity={a} hideAmounts={prefs.hideAmounts} />)
           : null}
       </Card>
-    </Screen>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Goals
-// ---------------------------------------------------------------------------
-
-function GoalsScreen() {
-  const { t } = useI18n();
-  const nav = useNav();
-  const { prefs } = useSession();
-  const goals = useLoad<Goal[]>(listGoals);
-  return (
-    <Screen>
-      <Row style={{ justifyContent: 'space-between' }}>
-        <AppText variant="title">{t('goalsTitle')}</AppText>
-        <IconButton icon="add-circle-outline" label={t('newGoal')} onPress={() => nav.push({ name: 'goalNew' })} />
-      </Row>
-      {goals.state.status === 'loading' ? <Loading /> : null}
-      {goals.state.status === 'error' ? <ErrorNotice error={goals.state.error} onRetry={goals.reload} /> : null}
-      {goals.state.status === 'ok' && goals.state.data.length === 0 ? (
-        <>
-          <EmptyState icon="flag-outline" title={t('goalsEmptyTitle')} body={t('goalsEmptyBody')} />
-          <Button title={t('newGoal')} icon="add" onPress={() => nav.push({ name: 'goalNew' })} />
-        </>
-      ) : null}
-      {goals.state.status === 'ok'
-        ? goals.state.data.map((g) => (
-            <GoalCard key={g.id} goal={g} hideAmounts={prefs.hideAmounts} onPress={() => nav.push({ name: 'goalDetail', goalId: g.id })} />
-          ))
-        : null}
     </Screen>
   );
 }
@@ -252,13 +235,13 @@ function GoalsScreen() {
 // Activity
 // ---------------------------------------------------------------------------
 
-function ActivityScreen() {
+export function ActivityScreen() {
   const { t } = useI18n();
+  const nav = useNav();
   const { prefs } = useSession();
   const activity = useLoad<Activity[]>(() => listActivities(undefined, 100));
   return (
-    <Screen>
-      <AppText variant="title">{t('activityTitle')}</AppText>
+    <Screen header={<Header title={t('activityTitle')} onBack={nav.pop} />}>
       {activity.state.status === 'loading' ? <Loading /> : null}
       {activity.state.status === 'error' ? <ErrorNotice error={activity.state.error} onRetry={activity.reload} /> : null}
       {activity.state.status === 'ok' && activity.state.data.length === 0 ? <EmptyState icon="list-outline" title={t('activityEmpty')} /> : null}
@@ -277,7 +260,7 @@ function ActivityScreen() {
 // Profile & settings
 // ---------------------------------------------------------------------------
 
-function ProfileScreen() {
+export function ProfileScreen() {
   const { t } = useI18n();
   const nav = useNav();
   const { prefs, updatePrefs, account, signOut, wipeEverything } = useSession();
@@ -312,8 +295,7 @@ function ProfileScreen() {
   const version = Constants.expoConfig?.version ?? '—';
 
   return (
-    <Screen>
-      <AppText variant="title">{t('profileTitle')}</AppText>
+    <Screen header={<Header title={t('profileTitle')} onBack={nav.pop} />}>
 
       <Card>
         <AppText variant="heading">{t('account')}</AppText>
@@ -406,68 +388,5 @@ function ProfileScreen() {
         onConfirm={doDelete}
       />
     </Screen>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Tabs
-// ---------------------------------------------------------------------------
-
-const TABS: { tab: Tab; icon: IconName; iconActive: IconName; label: TranslationKey }[] = [
-  { tab: 'home', icon: 'home-outline', iconActive: 'home', label: 'tabHome' },
-  { tab: 'goals', icon: 'flag-outline', iconActive: 'flag', label: 'tabGoals' },
-  { tab: 'activity', icon: 'list-outline', iconActive: 'list', label: 'tabActivity' },
-  { tab: 'profile', icon: 'person-outline', iconActive: 'person', label: 'tabProfile' },
-];
-
-export function MainTabs({ tab }: { tab: Tab }) {
-  const theme = useTheme();
-  const { t } = useI18n();
-  const nav = useNav();
-  const insets = useSafeAreaInsets();
-  const goTab = (next: Tab) => nav.reset({ name: 'tabs', tab: next });
-
-  return (
-    <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-      <View style={{ flex: 1 }}>
-        {tab === 'home' ? <HomeScreen goTab={goTab} /> : null}
-        {tab === 'goals' ? <GoalsScreen /> : null}
-        {tab === 'activity' ? <ActivityScreen /> : null}
-        {tab === 'profile' ? <ProfileScreen /> : null}
-      </View>
-      <View
-        accessibilityRole="tablist"
-        style={{
-          flexDirection: 'row',
-          borderTopWidth: 1,
-          borderTopColor: theme.colors.border,
-          backgroundColor: theme.colors.surface,
-          paddingBottom: Math.max(insets.bottom, 8),
-          paddingTop: 8,
-          paddingLeft: insets.left,
-          paddingRight: insets.right,
-        }}
-      >
-        {TABS.map((item) => {
-          const selected = item.tab === tab;
-          const color = selected ? theme.colors.primary : theme.colors.textMuted;
-          return (
-            <Pressable
-              key={item.tab}
-              onPress={() => goTab(item.tab)}
-              accessibilityRole="tab"
-              accessibilityState={{ selected }}
-              accessibilityLabel={t(item.label)}
-              style={{ flex: 1, alignItems: 'center', gap: 2, minHeight: 48, justifyContent: 'center' }}
-            >
-              <Icon name={selected ? item.iconActive : item.icon} color={color} />
-              <AppText variant="caption" weight={selected ? 'semibold' : 'regular'} color={color}>
-                {t(item.label)}
-              </AppText>
-            </Pressable>
-          );
-        })}
-      </View>
-    </View>
   );
 }

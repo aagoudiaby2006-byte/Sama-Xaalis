@@ -2,8 +2,8 @@
 // when the backend is not configured, calls return { ok: false, error: 'not_configured' }.
 import { FunctionsHttpError } from '@supabase/supabase-js';
 import { getSupabase } from './supabase';
-import type { Activity, FeeSchedule, Goal, GoalDraft, GoalStatus, IdType, Operator, Profile } from '../types';
-import { nextDebitDate, majorityDate, parseIsoDate, toIsoDate } from './schedule';
+import type { Activity, Goal, GoalCategory, GoalDraft, GoalStatus, IdType, Operator, Profile } from '../types';
+import { nextDebitDate } from './schedule';
 
 export type DataError =
   | 'not_configured'
@@ -99,6 +99,7 @@ export async function saveProfile(p: Omit<Profile, 'userId'>): Promise<DataResul
 interface GoalRow {
   id: string;
   name: string;
+  category: GoalCategory | null;
   target_amount: number;
   saved_amount: number;
   frequency: Goal['frequency'];
@@ -109,16 +110,18 @@ interface GoalRow {
   is_child_goal: boolean;
   child_birth_date: string | null;
   next_debit_at: string | null;
+  ends_on: string | null;
   created_at: string;
 }
 
 const GOAL_COLUMNS =
-  'id, name, target_amount, saved_amount, frequency, contribution_amount, status, operator, locked_until, is_child_goal, child_birth_date, next_debit_at, created_at';
+  'id, name, category, target_amount, saved_amount, frequency, contribution_amount, status, operator, locked_until, is_child_goal, child_birth_date, next_debit_at, ends_on, created_at';
 
 function toGoal(r: GoalRow): Goal {
   return {
     id: r.id,
     name: r.name,
+    category: r.category,
     targetAmount: r.target_amount,
     savedAmount: r.saved_amount,
     frequency: r.frequency,
@@ -129,6 +132,7 @@ function toGoal(r: GoalRow): Goal {
     isChildGoal: r.is_child_goal,
     childBirthDate: r.child_birth_date,
     nextDebitAt: r.next_debit_at,
+    endsOn: r.ends_on,
     createdAt: r.created_at,
   };
 }
@@ -144,20 +148,18 @@ export async function listGoals(): Promise<DataResult<Goal[]>> {
 export async function createGoal(d: GoalDraft): Promise<DataResult<Goal>> {
   const { supabase, userId, error } = await authed();
   if (!supabase || !userId) return fail(error ?? 'not_configured');
-  const birth = d.isChildGoal && d.childBirthDate ? parseIsoDate(d.childBirthDate) : null;
   const { data, error: e } = await supabase
     .from('goals')
     .insert({
       name: d.name.trim(),
+      category: d.category,
       target_amount: d.targetAmount,
       frequency: d.frequency,
       contribution_amount: d.contributionAmount,
       operator: d.operator,
-      is_child_goal: d.isChildGoal,
-      child_birth_date: birth ? toIsoDate(birth) : null,
-      // A child goal stays locked until the child turns 18.
-      status: birth ? 'locked' : 'active',
-      locked_until: birth ? toIsoDate(majorityDate(birth)) : null,
+      status: 'active',
+      ends_on: d.endsOn,
+      // Planned date only: the server debits nothing without an active operator authorization.
       next_debit_at: nextDebitDate(d.frequency, new Date()).toISOString(),
     })
     .select(GOAL_COLUMNS)
@@ -177,9 +179,6 @@ async function patchGoal(id: string, patch: Record<string, unknown>): Promise<Da
 export const pauseGoal = (id: string) => patchGoal(id, { status: 'paused' });
 export const resumeGoal = (id: string) => patchGoal(id, { status: 'active' });
 export const cancelGoal = (id: string) => patchGoal(id, { status: 'cancelled' });
-export const lockGoal = (id: string, untilIsoDate: string) => patchGoal(id, { status: 'locked', locked_until: untilIsoDate });
-/** The database refuses to unlock a child goal before the child turns 18. */
-export const unlockGoal = (id: string) => patchGoal(id, { status: 'active', locked_until: null });
 
 // ---------- Activity ----------
 
@@ -221,28 +220,7 @@ export async function listActivities(goalId?: string, limit = 50): Promise<DataR
   );
 }
 
-// ---------- Fees & withdrawals ----------
-
-export async function fetchFeeSchedule(operator: Operator): Promise<DataResult<FeeSchedule | null>> {
-  const supabase = getSupabase();
-  if (!supabase) return fail('not_configured');
-  const { data, error } = await supabase
-    .from('fee_schedules')
-    .select('operator, fixed_fee, rate_bps, min_fee, max_fee')
-    .eq('operator', operator)
-    .eq('kind', 'withdrawal')
-    .eq('active', true)
-    .maybeSingle();
-  if (error) return fail(mapPgError(error));
-  if (!data) return ok(null);
-  return ok({
-    operator: data.operator,
-    fixedFee: data.fixed_fee,
-    rateBps: data.rate_bps,
-    minFee: data.min_fee,
-    maxFee: data.max_fee,
-  });
-}
+// ---------- Withdrawals (fee: 1 %, see lib/money.ts) ----------
 
 export interface WithdrawalRequest {
   goalId: string;

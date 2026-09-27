@@ -22,9 +22,9 @@ function render(file, source, size) {
 }
 
 // iOS: square, opaque, no rounded corners (iOS applies its own mask).
-render('icon.png', svg(mark('#FFFFFF', '#10B981'), '#2563EB'), 1024);
-render('android-icon-foreground.png', svg(scaled(mark('#FFFFFF', '#10B981'), 0.62)), 1024);
-render('android-icon-background.png', svg('', '#2563EB'), 1024);
+render('icon.png', svg(mark('#F5F0E6', '#E0A526'), '#1E6B52'), 1024);
+render('android-icon-foreground.png', svg(scaled(mark('#F5F0E6', '#E0A526'), 0.62)), 1024);
+render('android-icon-background.png', svg('', '#1E6B52'), 1024);
 render('android-icon-monochrome.png', svg(scaled(mark('#FFFFFF', '#FFFFFF'), 0.62)), 1024);
 render('splash-icon.png', fs.readFileSync(path.join(__dirname, '..', 'assets', 'brand', 'logo.svg'), 'utf8'), 1024);
 render('favicon.png', fs.readFileSync(path.join(__dirname, '..', 'assets', 'brand', 'logo.svg'), 'utf8'), 48);

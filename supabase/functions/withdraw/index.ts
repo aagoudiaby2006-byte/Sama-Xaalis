@@ -1,4 +1,5 @@
-// Withdrawal request. Fees are recomputed server-side from `fee_schedules` (integer FCFA).
+// Withdrawal request. Fees are recomputed server-side from `fee_schedules` (integer FCFA, 1 %).
+// Money can only be withdrawn once the goal's saving period (`ends_on`) is over.
 // The withdrawal is recorded as "pending" and only becomes "succeeded" when the operator confirms it
 // (webhook, to be implemented with the operator integration). Idempotency: one row per idempotency key.
 import { adapters } from '../_shared/operators.ts';
@@ -47,9 +48,11 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (existing) return json({ activityId: existing.id, status: existing.status });
 
-    const { data: goal } = await db.from('goals').select('id, status, saved_amount').eq('id', goalId).eq('user_id', user.userId).maybeSingle();
+    const { data: goal } = await db.from('goals').select('id, status, saved_amount, ends_on').eq('id', goalId).eq('user_id', user.userId).maybeSingle();
     if (!goal) return error('forbidden', 403);
     if (goal.status === 'locked') return error('forbidden', 403);
+    const today = new Date().toISOString().slice(0, 10); // Senegal is UTC+0 all year
+    if (goal.ends_on && goal.ends_on > today) return error('forbidden', 403);
 
     const { data: pending } = await db
       .from('activities')

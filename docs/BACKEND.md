@@ -17,7 +17,9 @@ Il n’y a **pas** de table OTP dans `public` : les codes sont gérés par Supab
 - RLS activé sur toutes les tables, politiques `user_id = auth.uid()`.
 - `goals.saved_amount` n’est **pas** modifiable par l’app (privilèges par colonne) : seul le registre `activities`, écrit par le serveur, fait évoluer le solde, et uniquement quand un mouvement passe à `succeeded`.
 - `activities`, `mobile_money_connections`, `debit_authorizations`, `fee_schedules` : lecture seule pour l’app. Un client ne peut jamais marquer un portefeuille « connecté », un mandat « actif » ni une transaction « réussie ».
-- Épargne enfant : verrouillée par la base jusqu’aux 18 ans, déblocage anticipé refusé.
+- Période d’épargne (`goals.ends_on`, migration `20260928000000_goal_period.sql`) : obligatoire à la création (7 jours à ~5 ans), prolongeable mais jamais raccourcie ; `withdraw` refuse tout retrait avant la fin de la période. Le planificateur de prélèvements (à implémenter avec les intégrations) ne doit plus prélever après `ends_on`.
+- Catégorie d’objectif (`goals.category`) : 6 objectifs proposés + `autre`.
+- Épargne enfant (héritée, plus proposée dans l’app) : verrouillée par la base jusqu’aux 18 ans.
 - Le numéro du profil est forcé au numéro vérifié par SMS (`auth.users.phone`).
 - Idempotence des retraits : contrainte unique `(user_id, idempotency_key)`.
 - Suppression de compte : `ON DELETE CASCADE` depuis `auth.users` sur toutes les tables.
@@ -67,10 +69,19 @@ Reste à développer avec les opérateurs : les webhooks de confirmation (passag
 
 ## Barèmes de frais
 
-La table `fee_schedules` est **vide** : aucun frais n’est inventé. Tant qu’aucun barème actif n’existe, les retraits sont bloqués (« Frais non configurés »). Insérez les barèmes contractuels via le SQL Editor (rôle service), par exemple `fixed_fee`, `rate_bps` (100 = 1 %), `min_fee`, `max_fee`, `active = true`.
+Règle Sama-Xaalis : **frais de service de 1 % sur les retraits**, arrondis au franc supérieur. La migration `20260928000000_goal_period.sql` insère ce barème (`rate_bps = 100`) pour Wave et Orange Money ; l’app applique la même règle (`lib/money.ts`, `WITHDRAWAL_FEE_BPS`) et le serveur recalcule les frais avant tout retrait. Les frais éventuels des opérateurs sur les prélèvements restent à confirmer contractuellement.
 
 ## Tests de la base
 
 ```bash
 npm run test:db   # nécessite PostgreSQL local ; applique les migrations sur une base jetable
 ```
+
+## `services/paiement.ts` (placeholders)
+
+`verifierNumero`, `initierPrelevement`, `envoyerRetrait` et `envoyerOTP` sont les points d’entrée prévus pour les API Wave, Orange Money et SMS. Ce sont des **placeholders** :
+
+- en développement (`__DEV__`), ils renvoient des valeurs de test marquées `source: 'placeholder'` (l’app affiche alors « Mode test : résultat fictif ») ;
+- dans un build de production, ils renvoient `source: 'non_configure'` et `success: false` : l’app affiche « Intégration à configurer » et ne simule jamais rien.
+
+Seul `verifierNumero` est utilisé par l’app (étape 2 de l’inscription). Les prélèvements, retraits et SMS réels doivent être exécutés côté serveur (Edge Functions / Send SMS hook Supabase) avec des secrets stockés dans `supabase secrets`, jamais dans l’app.

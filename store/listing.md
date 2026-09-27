@@ -15,8 +15,8 @@ Sama-Xaalis signifie « Mon épargne » en wolof. L’application vous aide à m
 
 • Créez plusieurs objectifs : Tabaski, rentrée scolaire, fonds d’urgence…
 • Choisissez un montant (à partir de 500 FCFA) et une fréquence : journalière, hebdomadaire ou mensuelle.
-• Mettez un objectif en pause, reprenez-le, ou bloquez-le temporairement pour ne pas y toucher.
-• Épargne enfant : une épargne bloquée jusqu’aux 18 ans de l’enfant.
+• Choisissez un montant (dès 500 FCFA) et une période : le prélèvement est automatique.
+• À la fin de la période, retirez votre argent (frais de service : 1 %).
 • Avant chaque prélèvement : montant, date, fréquence, objectif, opérateur et frais sont affichés. Vous pouvez suspendre à tout moment.
 • Retraits vers Wave ou Orange Money avec frais et montant net affichés avant confirmation.
 • Sécurité : code secret, biométrie, verrouillage automatique, vérification du numéro par SMS.
@@ -36,8 +36,8 @@ Sama-Xaalis means “My savings” in Wolof. The app helps you put money aside, 
 
 • Create several goals: Tabaski, back to school, emergency fund…
 • Choose an amount (from 500 FCFA) and a frequency: daily, weekly or monthly.
-• Pause, resume, or temporarily lock a goal so you are not tempted.
-• Child savings: locked until the child turns 18.
+• Choose an amount (from 500 FCFA) and a period: debits are automatic.
+• At the end of the period, withdraw your money (service fee: 1%).
 • Before each debit: amount, date, frequency, goal, operator and fees are shown. Pause at any time.
 • Withdrawals to Wave or Orange Money, with fees and net amount shown before you confirm.
 • Security: secret code, biometrics, automatic locking, phone verification by SMS.
@@ -54,6 +54,6 @@ Sama-Xaalis is not a bank and does not guarantee any return. Debits and withdraw
 
 À produire **depuis une build réelle** (TestFlight / piste interne) une fois le backend configuré :
 - iPhone 6,9" (1320 × 2868) et 6,5" (1284 × 2778) ; Android téléphone (1080 × 1920 min).
-- Écrans conseillés : connexion, tableau de bord, création d’objectif, épargne enfant, écran avant prélèvement, sécurité/profil.
+- Écrans conseillés : connexion, tableau de bord, création d’objectif, calendrier de période, écran avant prélèvement, sécurité/profil.
 
 Les images de `docs/qa-screenshots/` sont des captures de contrôle qualité (rendu web, données de test injectées par le script de QA). **Ne pas les utiliser telles quelles dans les stores** : elles ne proviennent pas d’une build native.

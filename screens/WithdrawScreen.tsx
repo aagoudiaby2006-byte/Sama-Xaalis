@@ -1,23 +1,23 @@
 import { useEffect, useMemo, useState } from 'react';
 import * as Crypto from 'expo-crypto';
-import type { FeeSchedule, Goal, Operator } from '../types';
-import { useI18n, type TranslationKey } from '../lib/i18n';
+import type { Goal, Operator } from '../types';
+import { formatDate, useI18n, type TranslationKey } from '../lib/i18n';
 import { useNav } from '../lib/navigation';
-import { fetchFeeSchedule, listGoals, logAudit, requestWithdrawal, type DataError } from '../lib/data';
+import { listGoals, logAudit, requestWithdrawal, type DataError } from '../lib/data';
 import { canWithdrawFrom } from '../lib/goals';
 import { formatFcfa, parseAmountInput, quoteWithdrawal } from '../lib/money';
 import { OPERATORS, OPERATOR_BRAND } from '../lib/mobileMoney';
 import { AppText, Button, Card, ConfirmDialog, Header, KeyValue, Loading, Notice, Screen, Segmented, TextField } from '../components/ui';
+import { SecureBadge } from '../components/Finance';
 
 export function WithdrawScreen({ goalId }: { goalId?: string }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const nav = useNav();
   const [goals, setGoals] = useState<Goal[] | null>(null);
   const [loadError, setLoadError] = useState<DataError | null>(null);
   const [selectedGoal, setSelectedGoal] = useState<string | null>(goalId ?? null);
   const [operator, setOperator] = useState<Operator | null>(null);
-  const [schedule, setSchedule] = useState<FeeSchedule | null>(null);
-  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [waiting, setWaiting] = useState<Goal[]>([]);
   const [amountText, setAmountText] = useState('');
   const [confirming, setConfirming] = useState(false);
   // One idempotency key per reviewed withdrawal: retries and double taps can never create two withdrawals.
@@ -28,26 +28,17 @@ export function WithdrawScreen({ goalId }: { goalId?: string }) {
     void (async () => {
       const res = await listGoals();
       if (!res.ok) return setLoadError(res.error);
-      const eligible = res.data.filter(canWithdrawFrom);
+      const eligible = res.data.filter((g) => canWithdrawFrom(g));
       setGoals(eligible);
+      setWaiting(res.data.filter((g) => g.savedAmount > 0 && !canWithdrawFrom(g)));
       if (!selectedGoal && eligible.length > 0) setSelectedGoal(eligible[0].id);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    if (!operator) return;
-    setScheduleLoading(true);
-    void (async () => {
-      const res = await fetchFeeSchedule(operator);
-      setSchedule(res.ok ? res.data : null);
-      setScheduleLoading(false);
-    })();
-  }, [operator]);
-
   const goal = goals?.find((g) => g.id === selectedGoal) ?? null;
   const amount = parseAmountInput(amountText);
-  const quote = useMemo(() => quoteWithdrawal(amount, goal?.savedAmount ?? 0, schedule), [amount, goal, schedule]);
+  const quote = useMemo(() => quoteWithdrawal(amount, goal?.savedAmount ?? 0), [amount, goal]);
 
   const review = () => {
     if (!quote.ok || !operator || !goal) return;
@@ -73,7 +64,16 @@ export function WithdrawScreen({ goalId }: { goalId?: string }) {
     <Screen header={<Header title={t('withdrawTitle')} onBack={nav.pop} />}>
       {loadError ? <Notice kind="error">{t(`err_${loadError}` as TranslationKey)}</Notice> : null}
       {!goals && !loadError ? <Loading /> : null}
+      <SecureBadge />
+      <Notice kind="info">{t('withdrawFeeInfo')}</Notice>
       {goals && goals.length === 0 ? <Notice kind="info">{t('withdrawNoGoal')}</Notice> : null}
+      {waiting.map((g) =>
+        g.endsOn ? (
+          <Notice key={g.id} kind="info">
+            {t('withdrawWaiting', { name: g.name, date: formatDate(`${g.endsOn}T00:00:00`, lang) })}
+          </Notice>
+        ) : null,
+      )}
       {result ? <Notice kind={result.kind}>{result.text}</Notice> : null}
 
       {goals && goals.length > 0 ? (
@@ -88,18 +88,20 @@ export function WithdrawScreen({ goalId }: { goalId?: string }) {
             value={amountText}
             onChangeText={(v) => setAmountText(v.replace(/[^\d\s]/g, ''))}
           />
-          {operator && !scheduleLoading && amountText.length > 0 ? (
+          {amountText.length > 0 ? (
             quote.ok ? (
               <Card>
                 <KeyValue label={t('withdrawAmount')} value={formatFcfa(quote.amount)} />
                 <KeyValue label={t('withdrawFee')} value={formatFcfa(quote.fee)} />
-                <KeyValue label={t('withdrawNet')} value={formatFcfa(quote.net)} strong />
+                <AppText muted>{t('withdrawNet')}</AppText>
+                <AppText variant="display" numberOfLines={1}>
+                  {formatFcfa(quote.net)}
+                </AppText>
               </Card>
             ) : (
-              <Notice kind={quote.reason === 'fees_not_configured' ? 'warning' : 'error'}>{t(`quote_${quote.reason}`)}</Notice>
+              <Notice kind="error">{t(`quote_${quote.reason}`)}</Notice>
             )
           ) : null}
-          {scheduleLoading ? <Loading /> : null}
           <Button testID="withdraw-review" title={t('withdrawReview')} onPress={review} disabled={!quote.ok || !operator || !goal} />
         </>
       ) : null}

@@ -8,7 +8,7 @@ Sama-Xaalis manipule de l’épargne et des paiements. Rien ci-dessous n’a ét
 | Où sont détenus les fonds épargnés (compte de cantonnement, partenaire agréé) | **Non confirmé** | Aucun solde n’est calculé par l’app ; le solde n’évolue que sur confirmation serveur/opérateur. |
 | Contrats marchands Wave et Orange Money | **Absents** | « Intégration à configurer » ; aucune connexion ni prélèvement possible. |
 | Produit de prélèvement récurrent (mandat) chez chaque opérateur | **Non confirmé** | Aucune autorisation ne peut être simulée ; prélèvements « Non planifié : autorisation requise ». |
-| Barèmes de frais | **Absents** | Table `fee_schedules` vide ; retraits bloqués. |
+| Barèmes de frais | 1 % sur les retraits | Barème inséré par migration ; à valider avec les contrats opérateurs. |
 | KYC (pièce d’identité) | Collecte du type et numéro uniquement ; aucune vérification documentaire | À définir avec le partenaire agréé. |
 | Protection des données (loi sénégalaise n° 2008-12, déclaration à la CDP) | **À faire** | Politique de confidentialité en brouillon (`legal/`). |
 | Rendement | Aucun | L’app ne promet ni rendement ni remboursement automatique. |
